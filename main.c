@@ -29,7 +29,6 @@ void handle_client(int client_socket){
     printf("Recieved request: %s %s %s\n", req.method, req.path, req.version);
 
     generate_http_response(client_socket, req.path);
-
     
     close(client_socket);
 }

@@ -1,7 +1,10 @@
 #ifndef REQUEST_H
 #define REQUEST_H
 
+#include <stdio.h>
+#include <unistd.h>
 #include "header.h"
+
 
 typedef struct {
     char method[8]; // GET, POST, etc...

@@ -2,14 +2,25 @@
 #include <string.h>
 #include <stdbool.h>
 #include <unistd.h>
-#include <arpa/inet.h>
+
 
 #include "inc/request.h"
 #include "inc/response.h"
 
-#define PORT 8080
 #define BUFFER_SIZE 1024 // 1kb buff
-#define MAX_CONNECTIONS 5
+#define MAX_CONNECTIONS 5 // arbitrary, we should test how many it can take.
+
+#ifdef __linux__
+    #include <arpa/inet.h>
+    #define PORT 8080
+    #define PLATFORM "Linux"
+#elif defined(PICO_BUILD)
+    #include "pico-sdk/cyw43_arch.h"
+    #include "lwip/sockets.h"
+    #define PORT 80
+    #define PLATFORM "PicoW"
+#endif
+
 
 
 void handle_client(int client_socket){
@@ -35,6 +46,17 @@ void handle_client(int client_socket){
 
 
 int main(){
+    printf("Startting HTTP server on port %s for %s\n", PORT, PLATFORM);
+
+    #ifdef PICOBUILD
+        if(cyw43_arch_init()){
+            printf("Failed to initalize WiFi\n");
+            exit(EXIT_FAILURE);
+        }
+        cyw43_arch_enable_sta_model();
+        printf("WiFi initalized on PicoW\n");
+    #endif
+
     int server_socket, client_socket;
     struct sockaddr_in server_addr, client_addr;
     socklen_t client_addr_len = sizeof(client_addr);

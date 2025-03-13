@@ -1,5 +1,17 @@
+# Detect platform
+UNAME_S := $(shell uname -s)
+
+# Default Compiler
 CC = gcc
-CFLAGS = -Wall -Wextra -Wpedantic -std=c11 -Iinc -D_POSIX_C_SOURCE=200809L
+CFLAGS = -Wall -Wextra -Wpedantic -std=c11 -Iinc
+
+# OS-Specific Flags
+ifeq ($(UNAME_S), Darwin)  # macOS
+    CFLAGS += -D_DARWIN_C_SOURCE
+else # Linux
+    CFLAGS += -D_POSIX_C_SOURCE=200809L
+endif
+
 SRC = src
 BIN = bin
 OBJ = $(BIN)/main.o $(BIN)/request.o $(BIN)/response.o
@@ -20,9 +32,6 @@ $(BIN)/response.o: $(SRC)/response.c inc/response.h | $(BIN)
 
 $(BIN)/main.o: main.c inc/request.h inc/response.h inc/header.h | $(BIN)
 	$(CC) $(CFLAGS) -c main.c -o $(BIN)/main.o
-
-# routes.o: $(SRC)/routes.c inc/routes.h  # Future use ;)
-# 	$(CC) $(CFLAGS) -c $(SRC)/routes.c -o $(BIN)/routes.o
 
 clean:
 	rm -rf $(BIN)

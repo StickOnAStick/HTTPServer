@@ -8,7 +8,7 @@ CMPE 183 - Netwowrking / Advanced CS topics
    ```
 2. **Run the server:**
     ```bash
-    ./server
+    ./bin/server
     ```
 
 3. **Clean up the object files:**

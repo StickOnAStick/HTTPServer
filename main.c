@@ -1,8 +1,12 @@
 #include <stdio.h>
+#include <stdlib.h>  // Required for exit()
 #include <string.h>
 #include <stdbool.h>
 #include <unistd.h>
 #include <arpa/inet.h>
+#include <sys/types.h>  // Required for macOS
+#include <netinet/in.h> // Required for macOS
+
 
 #include "inc/request.h"
 #include "inc/response.h"

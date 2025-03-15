@@ -2,7 +2,7 @@
 #include <unistd.h>
 #include "response.h"
 
-#define DATA_DIR "./" // Directory for files we can fetch
+#define DATA_DIR "./public/" // Directory for files we can fetch
 #define BUFFER_SIZE 1024   // Hack, but make this a constant across files.
 
 // Helper function to check if a file exists
@@ -40,7 +40,8 @@ char* read_file(const char *filename, size_t *size){
 
 void generate_http_response(int client_socket, const char* path){
     char full_path[BUFFER_SIZE];
-    snprintf(full_path, sizeof(full_path), "%s%s", DATA_DIR, path+1); // Remove leading '/'
+    snprintf(full_path, sizeof(full_path), "%s%s", DATA_DIR, path+1); // Appends path to DATA_DIR, removing the leading '/' from path
+
     if(strcmp(path, "/") == 0){
         // These act like API routes. If we just hit "http://{device_ip}:8080/" we get "Hello World" as the response
         const char *body = "Hello World\n"; 

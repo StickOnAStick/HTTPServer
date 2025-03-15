@@ -1,0 +1,5 @@
+{
+    "iter": 10,
+    "test_file": "./scripts/basic.txt",
+    "output_file": "./output/basic.txt"
+}

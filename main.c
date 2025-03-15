@@ -15,8 +15,9 @@
     #define PORT 8080
     #define PLATFORM "Linux"
 #elif defined(PICO_BUILD)
-    #include "pico-sdk/cyw43_arch.h"
-    #include "lwip/sockets.h"
+    #include "pico/cyw43_arch.h"
+    #include "lwip/ip_addr.h"
+    #include "lwip/netif.h"
     #define PORT 80
     #define PLATFORM "PicoW"
 #endif

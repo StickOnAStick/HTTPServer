@@ -6,24 +6,44 @@
 #include <arpa/inet.h>
 #include <sys/types.h>  // Required for macOS
 #include <netinet/in.h> // Required for macOS
-
+#include <pthread.h>
 
 #include "inc/request.h"
 #include "inc/response.h"
 
 #define PORT 8080
-#define BUFFER_SIZE 1024 // 1kb buff
-#define MAX_CONNECTIONS 5
+#define BUFFER_SIZE 1024 // 1kb buff for incoming data
+#define REQUEST_BUFFER_SIZE 256 
+#define MAX_CONNECTIONS 2
 
+struct ServerState {
+    int num_connections;
+    struct sockaddr_in con_buff[REQUEST_BUFFER_SIZE];
+    int buff_size;
+    // 8 byte padding
+    pthread_mutex_t lock;  
 
-void handle_client(int client_socket){
+    const int max_connections;
+    const int buff_capacity;
+};
+
+struct ServerState server_state = {
+    .num_connections = 0,
+    .lock = PTHREAD_MUTEX_INITIALIZER,
+    .max_connections = REQUEST_BUFFER_SIZE, // Will tie to the number of cores we have.
+    .buff_capacity = MAX_CONNECTIONS
+};
+
+void *handle_client(void* sock){
+    int client_socket = *(int*)sock;
+    free(sock); // clean up memory
+
     char buffer[BUFFER_SIZE];
     int bytes_recieved = read(client_socket, buffer, sizeof(buffer) - 1); // leave room for delimeter
-
     if (bytes_recieved < 8){
         perror("Read Error: Data too small for parsing");
         close(client_socket);
-        return;
+        return NULL;
     }
 
     buffer[bytes_recieved] = '\0';
@@ -34,15 +54,25 @@ void handle_client(int client_socket){
 
     generate_http_response(client_socket, req.path);
     
+    pthread_mutex_lock(&server_state.lock);
+    server_state.num_connections--;
+    pthread_mutex_unlock(&server_state.lock);
     close(client_socket);
+
+    return NULL;
 }
 
 
 int main(){
+    
     int server_socket, client_socket;
     struct sockaddr_in server_addr, client_addr;
     socklen_t client_addr_len = sizeof(client_addr);
+    pthread_attr_t attr;
     int opt = 1;
+
+    memset(server_state.con_buff, 0, sizeof(server_state.con_buff)); // Clean the inital memory
+
 
     // Create Socket for connections
     server_socket = socket(AF_INET, SOCK_STREAM, 0);
@@ -74,6 +104,10 @@ int main(){
         exit(EXIT_FAILURE);
     }
 
+    // Threads with this attribute will be detacted at creation.
+    pthread_attr_init(&attr);
+    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+
     // Listen
     if(listen(server_socket, MAX_CONNECTIONS) < 0)
     {
@@ -85,6 +119,8 @@ int main(){
     printf("HTTP Server running on port %d...\n", PORT);
 
     while(1){
+
+
         client_socket = accept(
             server_socket, 
             (struct sockaddr*)&client_addr, 
@@ -96,7 +132,28 @@ int main(){
             continue; // Brilliant error handling
         }
 
-        handle_client(client_socket);
+        int* new_sock = (int*) malloc(sizeof(client_socket));
+        *new_sock = client_socket;
+
+        if(pthread_mutex_lock(&server_state.lock) != 0){
+            // Could not obtain lock, drop connection.
+            printf("ERR: Could not attain server_state lock! Dropping connection.");
+            close(*new_sock);
+            free(new_sock);
+            continue;
+        }
+        server_state.num_connections++;
+        pthread_mutex_unlock(&server_state.lock);
+        
+
+        // Thread to handle client response
+        pthread_t thread;
+        if(pthread_create(&thread, &attr, handle_client, new_sock)){
+            printf("WARN: Could not create child thread. Dropping connection.");
+            close(*new_sock);
+            free(new_sock);
+        }
+
     }
     close(server_socket);
     return 0;

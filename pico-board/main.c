@@ -16,7 +16,6 @@ static err_t on_recv(void *arg, struct tcp_pcb *pcb,
     }
     tcp_recved(pcb, p->tot_len);
 
-    // Very simple GET-only check; ignore `arg`
     char *data = (char*)p->payload;
     if (strncmp(data, "GET ", 4) == 0) {
         generate_http_response(pcb, NULL);
@@ -35,27 +34,46 @@ static err_t on_accept(void *arg, struct tcp_pcb *newpcb, err_t err) {
 
 int main() {
     stdio_init_all();
-    printf("Initializing Wi-Fi chip...\n");
+    sleep_ms(200);  // give the USB-CDC link time to enumerate
+
+    printf("1) Initialized stdio over USB\n");
+    fflush(stdout);
+
+    printf("2) Initializing Wi-Fi chip…\n");
     fflush(stdout);
     if (cyw43_arch_init()) {
-        printf("Wi-Fi init failed\n");
+        printf("ERROR: Wi-Fi init failed\n");
         return 1;
     }
 
-    // Connect to your network
-    cyw43_arch_enable_sta_mode();
-    cyw43_arch_wifi_connect_timeout_ms("tkwaterstorage", "kimmizukura10",
-                                       CYW43_AUTH_WPA2_AES_PSK, 30 * 1000);
+    const char *ssid = "YourNetworkSSID";
+    const char *pass = "YourNetworkPassword";
 
-    // Set up a TCP listener
+    printf("3) Enabling STA mode & connecting to SSID '%s'…\n", ssid);
+    fflush(stdout);
+    cyw43_arch_enable_sta_mode();
+    int ret = cyw43_arch_wifi_connect_timeout_ms(
+        ssid, pass,
+        CYW43_AUTH_WPA2_AES_PSK,
+        5 * 1000   // 5 s timeout for faster feedback
+    );
+    if (ret) {
+        printf("ERROR: join failed (%d)\n", ret);
+        return 1;
+    }
+
+    printf("4) Wi-Fi connected!\n");
+    fflush(stdout);
+
     struct tcp_pcb *pcb = tcp_new();
     tcp_bind(pcb, IP_ADDR_ANY, PORT);
     pcb = tcp_listen(pcb);
     tcp_accept(pcb, on_accept);
 
-    printf("HTTP server running on port %d\n", PORT);
+    printf("5) HTTP server running on port %d\n", PORT);
+    fflush(stdout);
 
-    // Main loop: poll the driver & LWIP
+    // Main loop: poll the driver & lwIP
     while (1) {
         cyw43_arch_poll();
     }

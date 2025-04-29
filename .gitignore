@@ -1,3 +1,5 @@
 *bin
 
 tests/output
+pico-board/build
+.vscode

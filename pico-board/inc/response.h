@@ -1,8 +1,9 @@
 #ifndef RESPONSE_H
 #define RESPONSE_H
 
-#include "lwip/api.h"
+#include "lwip/tcp.h"    // raw‐API TCP
 
-void generate_http_response(struct netconn *conn, const char *path);
+// now takes a tcp_pcb*, not a netconn
+void generate_http_response(struct tcp_pcb *pcb, const char *path);
 
-#endif
+#endif /* RESPONSE_H */

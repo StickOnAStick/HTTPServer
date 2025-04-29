@@ -1,74 +1,64 @@
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 #include "pico/stdlib.h"
-#include "cyw43_arch.h"
-#include "lwip/opt.h"
-#include "lwip/api.h"
-#include "lwip/sys.h"
+#include "pico/cyw43_arch.h"
+#include "lwip/tcp.h"
+#include "response.h"
 
-#include "inc/request.h"
-#include "inc/response.h"
+#define PORT 80
 
-#define PORT 8080
-#define BUFFER_SIZE 1024 // 1kb buff
-#define MAX_CONNECTIONS 5
+// Called when data arrives
+static err_t on_recv(void *arg, struct tcp_pcb *pcb,
+                     struct pbuf *p, err_t err) {
+    if (!p) {
+        tcp_close(pcb);
+        return ERR_OK;
+    }
+    tcp_recved(pcb, p->tot_len);
 
-void handle_client(struct netconn *client_conn) {
-    char buffer[BUFFER_SIZE];
-    int bytes_received = netconn_recv(client_conn, buffer, sizeof(buffer));
-    if (bytes_received < 8) {
-        printf("Error: Data too small for parsing\n");
-        netconn_close(client_conn);
-        return;
+    // Very simple GET-only check; ignore `arg`
+    char *data = (char*)p->payload;
+    if (strncmp(data, "GET ", 4) == 0) {
+        generate_http_response(pcb, NULL);
     }
 
-    HttpRequest req;
-    parse_http_request(buffer, &req);
+    pbuf_free(p);
+    tcp_close(pcb);
+    return ERR_OK;
+}
 
-    printf("Received request: %s %s %s\n", req.method, req.path, req.version);
-
-    generate_http_response(client_conn, req.path);
-    
-    netconn_close(client_conn);
+// Called when a new client connects
+static err_t on_accept(void *arg, struct tcp_pcb *newpcb, err_t err) {
+    tcp_recv(newpcb, on_recv);
+    return ERR_OK;
 }
 
 int main() {
     stdio_init_all();
+    printf("Initializing Wi-Fi chip...\n");
+    fflush(stdout);
     if (cyw43_arch_init()) {
-        printf("Failed to initialize Wi-Fi\n");
+        printf("Wi-Fi init failed\n");
         return 1;
     }
 
-    // Connect to Wi-Fi
-    const char *ssid = "yourSSID";
-    const char *password = "yourPassword";
-    if (cyw43_arch_wifi_connect(ssid, password)) {
-        printf("Failed to connect to Wi-Fi\n");
-        return 1;
-    }
+    // Connect to your network
+    cyw43_arch_enable_sta_mode();
+    cyw43_arch_wifi_connect_timeout_ms("tkwaterstorage", "kimmizukura10",
+                                       CYW43_AUTH_WPA2_AES_PSK, 30 * 1000);
 
-    // Start a server
-    struct netconn *server_conn;
-    server_conn = netconn_new(NETCONN_TCP);
-    if (server_conn == NULL) {
-        printf("Failed to create server socket\n");
-        return 1;
-    }
+    // Set up a TCP listener
+    struct tcp_pcb *pcb = tcp_new();
+    tcp_bind(pcb, IP_ADDR_ANY, PORT);
+    pcb = tcp_listen(pcb);
+    tcp_accept(pcb, on_accept);
 
-    netconn_bind(server_conn, NULL, PORT);
-    netconn_listen(server_conn);
+    printf("HTTP server running on port %d\n", PORT);
 
-    printf("HTTP Server running on port %d...\n", PORT);
-
+    // Main loop: poll the driver & LWIP
     while (1) {
-        struct netconn *client_conn;
-        if (netconn_accept(server_conn, &client_conn) == ERR_OK) {
-            handle_client(client_conn);
-        }
-        netconn_delete(client_conn);
+        cyw43_arch_poll();
     }
 
-    netconn_delete(server_conn);
     return 0;
 }

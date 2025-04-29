@@ -1,9 +1,18 @@
 #include "response.h"
 #include <string.h>
-#include "lwip/api.h"  // Add for netconn_write
-#include "lwip/netbuf.h"  // Add for NETCONN_COPY
+#include <stdio.h>
 
-void generate_http_response(struct netconn *conn, const char *path) {
-    const char *response = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\nHello, Pico W!";
-    netconn_write(conn, response, strlen(response), NETCONN_COPY);
+void generate_http_response(struct tcp_pcb *pcb, const char *path) {
+    const char *body = "<html><body><h1>Hello, Pico W!</h1></body></html>";
+    char hdr[256];
+    int hlen = snprintf(hdr, sizeof(hdr),
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: text/html\r\n"
+        "Content-Length: %d\r\n"
+        "\r\n",
+        (int)strlen(body));
+
+    // send header + body via raw TCP API
+    tcp_write(pcb, hdr,   hlen,         TCP_WRITE_FLAG_COPY);
+    tcp_write(pcb, body,  strlen(body), TCP_WRITE_FLAG_COPY);
 }

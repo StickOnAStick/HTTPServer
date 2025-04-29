@@ -2,7 +2,8 @@
     "files.associations": {
         "stdio.h": "c",
         "request.h": "c",
-        "gpio.h": "c"
+        "gpio.h": "c",
+        "cyw43_arch.h": "c"
     },
     "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
     "cmake.sourceDirectory": "/home/nick/School/CMPE189/HTTPServer/pico-sdk"

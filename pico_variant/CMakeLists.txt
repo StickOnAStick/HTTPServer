@@ -36,7 +36,6 @@ target_link_libraries(pico_http_server
     pico_stdlib
     pico_multicore
     pico_cyw43_arch_lwip_threadsafe_background
-    pico_lwip_http
     pico_cyw43_driver
     pico_lwip
 )

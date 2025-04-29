@@ -5,8 +5,6 @@
 #include "queue.h"
 #include "types.h"
 
-#define SSID "YourWifiSSID"
-#define PASS "YourPass"
 #define PORT 80
 #define LED_PIN 18 // This maps to GPIO 18
 
@@ -22,7 +20,7 @@ static err_t recv_cb(void *arg, struct tcp_pcb* pcb, struct pbuf *p, err_t err){
     // Set the protocol control block to the incoming protocol control block
     req.pcb = pcb;
     // Set the buffer to the incoming request's payload buffer
-    memset(req.buffer, p->payload, p->len < REQUEST_BUFFER_SIZE ? p->len : REQUEST_BUFFER_SIZE);
+    memcpy(req.buffer, p->payload, p->len < REQUEST_BUFFER_SIZE ? p->len : REQUEST_BUFFER_SIZE);
     req.length = p->len;
 
     queue_push(&request_queue, &req);
@@ -37,27 +35,15 @@ static err_t accept_cb(void *arg, struct tcp_pcb *newpcb, err_t err){
 }
 
 void core0_main(){
-    stdio_init_all();
+
+
+    // cyw43_arch_enable_sta_mode();
+    // const char* dev_name = "pico";
+    // netif_set_hostname(netif_default, dev_name); // Set the device name so we can ping it with `pi.local`
 
     gpio_init(LED_PIN);
     gpio_set_dir(LED_PIN, GPIO_OUT);
     gpio_put(LED_PIN, 0); // Off initally.
-
-    if(cyw43_arch_init()){
-        printf("WiFi init failed!\n");
-        return;
-    }
-
-    cyw43_arch_enable_sta_mode();
-    const char* dev_name = "pico";
-    netif_set_hostname(netif_default, dev_name); // Set the device name so we can ping it with `pi.local`
-
-    if(cyw43_arch_wifi_connect_timeout_ms(SSID, PASS, CYW43_AUTH_WPA2_AES_PSK, 30000)){
-        printf("WiFi failed to connect!");
-        return;
-    }
-
-    printf("Wifi Connected!\tDevice name: %s\tIP Addr: %s", dev_name, ip4addr_ntoa(&netif_default->ip_addr));
 
     struct tcp_pcb* pcb = tcp_new();
     if(!pcb){
@@ -75,8 +61,9 @@ void core0_main(){
 
     while(true){
         cyw43_arch_poll();
-        sleep_ms(1);
+        sleep_ms(10);
     }
 
     cyw43_arch_deinit();
+    return;
 }

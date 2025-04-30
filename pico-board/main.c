@@ -34,32 +34,34 @@ static err_t on_accept(void *arg, struct tcp_pcb *newpcb, err_t err) {
 
 int main() {
     stdio_init_all();
-    sleep_ms(200);  // give the USB-CDC link time to enumerate
+    sleep_ms(10000);  // give the host 2 seconds to enumerate the CDC port
 
-    printf("1) Initialized stdio over USB\n");
+    printf("1) stdio over USB initialized\n");
     fflush(stdout);
 
     printf("2) Initializing Wi-Fi chip…\n");
     fflush(stdout);
     if (cyw43_arch_init()) {
         printf("ERROR: Wi-Fi init failed\n");
-        return 1;
+        fflush(stdout);
+        while (true) tight_loop_contents();
     }
 
-    const char *ssid = "YourNetworkSSID";
-    const char *pass = "YourNetworkPassword";
+    const char *ssid = "yourSSID";
+    const char *pass = "yourPassword";
 
-    printf("3) Enabling STA mode & connecting to SSID '%s'…\n", ssid);
+    printf("3) Enabling STA & joining '%s'…\n", ssid);
     fflush(stdout);
     cyw43_arch_enable_sta_mode();
     int ret = cyw43_arch_wifi_connect_timeout_ms(
         ssid, pass,
         CYW43_AUTH_WPA2_AES_PSK,
-        5 * 1000   // 5 s timeout for faster feedback
+        5 * 1000   // 5 s timeout for quick feedback
     );
     if (ret) {
         printf("ERROR: join failed (%d)\n", ret);
-        return 1;
+        fflush(stdout);
+        while (true) tight_loop_contents();
     }
 
     printf("4) Wi-Fi connected!\n");
@@ -73,9 +75,11 @@ int main() {
     printf("5) HTTP server running on port %d\n", PORT);
     fflush(stdout);
 
-    // Main loop: poll the driver & lwIP
+    // main loop: poll driver, then heartbeat every 1 s
     while (1) {
         cyw43_arch_poll();
+        sleep_ms(1000);
+        printf("."); fflush(stdout);
     }
 
     return 0;

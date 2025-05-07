@@ -41,8 +41,14 @@ class TestOutput:
     def __repr__(self):
         return f"{self.method} {self.endpoint} {self.response_code} {self.response_time} us\n"
 
-    
+@dataclass
+class TestCase:
+    url: str
+    method: str
 
+    def __iter__(self):
+        yield self.url
+        yield self.method
 
 def main():
 
@@ -53,59 +59,66 @@ def main():
         config.output_file = Path(data["output_file"])
 
     test_results: deque[TestOutput] = deque()
+    test_cases: list[TestCase] = []
+
+    # Read each line of the test file
+    with open(config.test_file, "r") as test_file:
+        for test_case in test_file:
+            test_case = test_case.rstrip()  # Remove trailing newlines but keep spaces between words
+
+            if not test_case:
+                continue  # Skip empty lines
+
+            try:
+                method, url = test_case.split(" ", 1)  # Ensure we only split at the first space
+                url = url.strip()  # Strip any accidental surrounding spaces from the URL
+            except ValueError:
+                logger.debug(f"Skipping malformed test case: {test_case}")
+                continue
+            
+            test_cases.append(TestCase(url, method))
+            test_case = test_file.readline()
+
+           
+
+
 
     # Run test file N times
     start = time.time_ns()
     for _ in range(config.iter):
-        # Read each line of the test file
-        with open(config.test_file, "r") as test_file:
-            for test_case in test_file:
-                test_case = test_case.rstrip()  # Remove trailing newlines but keep spaces between words
-
-                if not test_case:
-                    continue  # Skip empty lines
-
-                try:
-                    method, url = test_case.split(" ", 1)  # Ensure we only split at the first space
-                    url = url.strip()  # Strip any accidental surrounding spaces from the URL
-                except ValueError:
-                    logger.debug(f"Skipping malformed test case: {test_case}")
-                    continue
-               
-                match method:
-                    case "GET":
-                        res = requests.get(url)
-                    case "POST":
-                        res = requests.post(url)
-                    case "PUT":
-                        res = requests.put(url)
-                    case "DELETE":
-                        res = requests.delete(url)
-                    case "PATCH":   
-                        res = requests.patch(url)
+        for url, method in test_cases:
+            match method:
+                case "GET":
+                    res = requests.get(url)
+                case "POST":
+                    res = requests.post(url)
+                case "PUT":
+                    res = requests.put(url)
+                case "DELETE":
+                    res = requests.delete(url)
+                case "PATCH":   
+                    res = requests.patch(url)
                 
-                test_out: TestOutput = TestOutput(
-                    endpoint=url,
-                    method=method,
-                    response_code=res.status_code,
-                    response_time=res.elapsed.microseconds
-                )
-                test_results.append(test_out)
-                test_case = test_file.readline()
+            test_out: TestOutput = TestOutput(
+                endpoint=url,
+                method=method,
+                response_code=res.status_code,
+                response_time=res.elapsed.microseconds
+            )
+            test_results.append(test_out)
     end = time.time_ns()
     # Store the total elapsed time
     elapsed = end - start
     # Calc number of requests:
     request_count = count_lines(config.test_file)
-    # Save the config for later
-    copy_config()
+
 
     # Add the elapsed time to the config json 
     data['time_ns'] = elapsed
     data['time_ms'] = elapsed / 1_000_000
     data["num_requests"] = request_count * data['iter']
     
-    with open('./output/config.json', 'w') as f:
+    with open(f'{config.output_file.with_suffix("")}.json', 'w') as f:
         json.dump(data, f, indent=2)
         
     # Save the results to output file

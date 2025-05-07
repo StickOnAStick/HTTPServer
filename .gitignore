@@ -1,3 +1,5 @@
 *bin
-
+build/
 tests/output
+pico-sdk
+pico_variant/build

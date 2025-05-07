@@ -15,8 +15,10 @@
 #define LWIP_TCP                 1
 #define LWIP_DNS                 1
 #define LWIP_ICMP                1
+#define LWIP_DHCP                1
 
 // memory pools
+#define MEMP_NUM_DHCP            1
 #define MEM_ALIGNMENT            4
 #define MEM_SIZE                 4096
 #define MEMP_NUM_PBUF            16

@@ -22,6 +22,11 @@ add_executable(server
     main.c
     src/request.c
     src/response.c
+    src/core0.c
+    src/core1.c
+    src/generated_fs.c
+    src/queue.c
+    src/http_server.c
 )
 
 # 6) Route all stdio (printf) over USB-CDC, disable UART stdio
@@ -33,11 +38,13 @@ target_include_directories(server PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}
     ${CMAKE_CURRENT_LIST_DIR}/inc
     ${CMAKE_CURRENT_LIST_DIR}/src
+    ${CMAKE_CURRENT_LIST_DIR}/inc/arch
 )
 
 # 8) Link the poll‐driven raw-API network wrapper
 target_link_libraries(server PRIVATE
     pico_stdlib
+    pico_multicore
     pico_cyw43_arch_lwip_poll
 )
 

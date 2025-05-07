@@ -1,11 +1,9 @@
 import json
 import requests
 import shutil
-import os
 import time
 
 from dataclasses import dataclass
-from enum import Enum
 from loguru import logger
 from pathlib import Path
 from collections import deque
@@ -54,9 +52,10 @@ def main():
         config.test_file = Path(data["test_file"])
         config.output_file = Path(data["output_file"])
 
-    test_results: deque[TestOutput] = []
+    test_results: deque[TestOutput] = deque()
 
     # Run test file N times
+    start = time.time_ns()
     for _ in range(config.iter):
         # Read each line of the test file
         with open(config.test_file, "r") as test_file:
@@ -79,7 +78,7 @@ def main():
                     case "POST":
                         res = requests.post(url)
                     case "PUT":
-                        pass # Not implemented
+                        res = requests.put(url)
                     case "DELETE":
                         res = requests.delete(url)
                     case "PATCH":   
@@ -93,18 +92,32 @@ def main():
                 )
                 test_results.append(test_out)
                 test_case = test_file.readline()
+    end = time.time_ns()
+    # Store the total elapsed time
+    elapsed = end - start
+    # Calc number of requests:
+    request_count = count_lines(config.test_file)
+    # Save the config for later
+    copy_config()
+
+    # Add the elapsed time to the config json 
+    data['time_ns'] = elapsed
+    data['time_ms'] = elapsed / 1_000_000
+    data["num_requests"] = request_count * data['iter']
+    
+    with open('./output/config.json', 'w') as f:
+        json.dump(data, f, indent=2)
         
-        
-        # Save the results to output file
-        with open(config.output_file, "w+") as output_file:
-            output_file.write(TestOutput.headers())
-            output_file.writelines([repr(test_out) for test_out in test_results])
+    # Save the results to output file
+    with open(config.output_file, "w+") as output_file:
+        output_file.write(TestOutput.headers())
+        output_file.writelines([repr(test_out) for test_out in test_results])
 
 def count_lines(filepath):
     """ Counts the numbers of lines in a file"""
 
     try:
-        with open('./scripts/basic.txt', 'r') as file:
+        with open(filepath, 'r') as file:
             line_count = sum(1 for line in file)
         return line_count
     except FileNotFoundError:
@@ -128,29 +141,13 @@ def copy_config():
 if __name__ == "__main__":
     logger.info("Beginning test Suite...")
     config = TestConfig()
-    start = time.time_ns()
     main()
-    end = time.time_ns()
-
-    # Store the total elapsed time
-    elapsed = end - start
-    # Calc number of requests:
-    request_count = count_lines('./scripts/basic.txt')
 
     
-    # Save the config for later
-    copy_config()
 
-
-    # Add the elapsed time to the config json
-    with open("./output/config.json", "r+") as config_file:
-        data = json.load(config_file)
     
-    data['time_ns'] = elapsed
-    data["num_requests"] = request_count * data['iter']
     
-    with open('./output/config.json', 'w') as f:
-        json.dump(data, f, indent=2)
+    
 
         
 

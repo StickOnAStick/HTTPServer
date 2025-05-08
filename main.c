@@ -13,7 +13,7 @@
 
 #define PORT 8080
 #define BUFFER_SIZE 1024 // 1kb buff
-#define MAX_CONNECTIONS 5
+#define MAX_CONNECTIONS SOMAXCONN
 
 
 void handle_client(int client_socket){

@@ -53,8 +53,8 @@ int main() {
     cyw43_arch_enable_sta_mode();
 
     // 2) Scan for your SSID
-    const char *ssid = "wifi_ssid";
-    const char *pass = "wifi_password";
+    const char *ssid = "tkwaterstorage";
+    const char *pass = "kimmizukura10";
     printf("Scanning for '%s' …\n", ssid); fflush(stdout);
     cyw43_wifi_scan_options_t opts = {0};
     if (cyw43_wifi_scan(&cyw43_state, &opts, (void*)ssid, scan_best_cb)) {

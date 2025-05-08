@@ -6,7 +6,7 @@
 #include "lwip/tcp.h"
 
 #define REQUEST_BUFFER_SIZE 1024
-#define REQUEST_QUEUE_SIZE     8
+#define REQUEST_QUEUE_SIZE     50
 
 typedef struct {
     struct tcp_pcb *pcb;

@@ -18,7 +18,7 @@ static err_t recv_cb(void *arg, struct tcp_pcb *pcb, struct pbuf *p, err_t err) 
         tcp_close(pcb);
         return ERR_OK;
     }
-
+    tcp_recved(pcb, p->tot_len);
     request_t req;
     size_t copy_len = p->len < REQUEST_BUFFER_SIZE - 1
                           ? p->len
@@ -47,14 +47,12 @@ static err_t accept_cb(void *arg, struct tcp_pcb *newpcb, err_t err) {
 
 // core0_main: listen, accept, poll Wi-Fi
 void core0_main(void) {
-    struct tcp_pcb *listener = tcp_new();
-    tcp_bind(listener, IP_ADDR_ANY, PORT);
-    listener = tcp_listen(listener);
-    tcp_accept(listener, accept_cb);
-
-    while (true) {
-        cyw43_arch_poll();   // drive the Wi-Fi stack
-        sleep_ms(10);
-    }
+  struct tcp_pcb *listener = tcp_new();
+  tcp_bind(listener, IP_ADDR_ANY, PORT);
+  listener = tcp_listen_with_backlog(listener, 50);
+  tcp_accept(listener, accept_cb);
+  // no polling loop needed—background thread drives LWIP
+  while (true) cyw43_arch_poll();
 }
+
 

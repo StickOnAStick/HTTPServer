@@ -21,7 +21,6 @@ pico_sdk_init()
 add_executable(server
     main.c
     src/request.c
-    src/response.c
     src/core0.c
     src/core1.c
     src/generated_fs.c

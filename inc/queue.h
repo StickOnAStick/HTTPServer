@@ -29,5 +29,4 @@ void queue_init(queue_t* queue);
 void queue_push(queue_t* queue, task_t task);
 task_t queue_pop(queue_t* queue);
 
-
 #endif

@@ -10,13 +10,20 @@
 
 #include "inc/request.h"
 #include "inc/response.h"
+#include "inc/queue.h"
+#include "inc/worker.h"
 
 #define PORT 8080
 #define BUFFER_SIZE 1024 // 1kb buff
-#define MAX_CONNECTIONS 5
+#define MAX_CONNECTIONS 100
+#define NUM_THREADS 6
 
+pthread_t threads[NUM_THREADS];
+queue_t TaskQueue;
 
-void handle_client(int client_socket){
+void handle_client(void* arg){
+    int client_socket = *(int*)arg;
+    free(arg); // Required otherwise race conditions.
     char buffer[BUFFER_SIZE];
     int bytes_recieved = read(client_socket, buffer, sizeof(buffer) - 1); // leave room for delimeter
 
@@ -82,6 +89,13 @@ int main(){
         exit(EXIT_FAILURE);
     }
 
+    // Initalize Task queue
+    queue_init(&TaskQueue);
+    // Launch worker threads
+    for(int i = 0; i < NUM_THREADS; ++i){
+        pthread_create(&threads[i], NULL, worker_thread, (void*)&TaskQueue);
+    }
+
     printf("HTTP Server running on port %d...\n", PORT);
 
     while(1){
@@ -90,13 +104,23 @@ int main(){
             (struct sockaddr*)&client_addr, 
             &client_addr_len
         );
-
         if(client_socket < 0){
             perror("Accept failed.");
             continue; // Brilliant error handling
         }
 
-        handle_client(client_socket);
+        int* socket_pointer = malloc(sizeof(int));
+        if(!socket_pointer){
+            perror("malloc: could not create socket on heap");
+            close(client_socket);
+            continue;
+        }
+        *socket_pointer = client_socket;
+
+        
+        task_t task = { .function=handle_client, .arg=socket_pointer };
+        queue_push(&TaskQueue, task);
+        printf("Queue size: %d\t", TaskQueue.count);
     }
     close(server_socket);
     return 0;

@@ -2,6 +2,7 @@
 #include <pthread.h>
 #include <stdio.h>
 #include "queue.h"
+#include "task.h"
 
 void* worker_thread(void* arg) {
     /*

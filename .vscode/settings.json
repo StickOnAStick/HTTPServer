@@ -1,6 +1,7 @@
 {
     "files.associations": {
         "stdio.h": "c",
-        "request.h": "c"
+        "request.h": "c",
+        "queue.h": "c"
     }
 }

@@ -1,5 +1,6 @@
 
 #include "queue.h"
+#include "task.h"
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -14,7 +15,7 @@ void queue_push(queue_t* q, task_t task){
 
     if(q->count == QUEUE_CAPACITY){
         // THROW 504 error
-        fprint(stderr, "Queue full!");
+        fprintf(stderr, "Queue full!");
         exit(EXIT_FAILURE);
     }
 

@@ -1,8 +1,7 @@
-
-#include "queue.h"
-#include "task.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include "queue.h"
+#include "task.h"
 
 void queue_init(queue_t* q){
     q->front = q->rear = q->count = 0;
@@ -10,13 +9,13 @@ void queue_init(queue_t* q){
     pthread_cond_init(&q->sig, NULL);
 }
 
-void queue_push(queue_t* q, task_t task){
+int queue_push(queue_t* q, task_t task){
     pthread_mutex_lock(&q->lock);
 
     if(q->count == QUEUE_CAPACITY){
-        // THROW 504 error
-        fprintf(stderr, "Queue full!");
-        exit(EXIT_FAILURE);
+        // THROW 503 error
+        pthread_mutex_unlock(&q->lock);
+        return 1;
     }
 
     q->tasks[q->rear] = task;
@@ -25,6 +24,7 @@ void queue_push(queue_t* q, task_t task){
 
     pthread_cond_signal(&q->sig);
     pthread_mutex_unlock(&q->lock);
+    return 0;
 }
 
 task_t queue_pop(queue_t* q){

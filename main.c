@@ -16,14 +16,14 @@
 #define PORT 8080
 #define BUFFER_SIZE 1024 // 1kb buff
 #define MAX_CONNECTIONS 100
-#define NUM_THREADS 6
+#define NUM_THREADS 20
 
 pthread_t threads[NUM_THREADS];
 queue_t TaskQueue;
 
 void handle_client(void* arg){
     int client_socket = *(int*)arg;
-    free(arg); // Required otherwise race conditions.
+    free(arg); // Free right away.
     char buffer[BUFFER_SIZE];
     int bytes_recieved = read(client_socket, buffer, sizeof(buffer) - 1); // leave room for delimeter
 
@@ -94,6 +94,7 @@ int main(){
     // Launch worker threads
     for(int i = 0; i < NUM_THREADS; ++i){
         pthread_create(&threads[i], NULL, worker_thread, (void*)&TaskQueue);
+        pthread_detach(threads[i]);
     }
 
     printf("HTTP Server running on port %d...\n", PORT);
@@ -119,8 +120,22 @@ int main(){
 
         
         task_t task = { .function=handle_client, .arg=socket_pointer };
-        queue_push(&TaskQueue, task);
-        printf("Queue size: %d\t", TaskQueue.count);
+        if(queue_push(&TaskQueue, task)){
+            const char* body = "503 Service Unavailable\n";
+            //printf("Reuqest dropped: %d", *socket_pointer);
+            dprintf(client_socket,
+                "HTTP/1.1 503 Service Unavailable\r\n"
+                "Content-Type: text/plain\r\n"
+                "Content-Length: %zu\r\n"
+                "Connection: close\r\n"
+                "\r\n"
+                "%s",
+                strlen(body), body
+            );
+            close(client_socket);
+            free(socket_pointer); // Prevent memory leak
+        }
+        //printf("Queue size: %d\n", TaskQueue.count);
     }
     close(server_socket);
     return 0;

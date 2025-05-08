@@ -4,7 +4,7 @@
 #include <pthread.h>
 #include "task.h"
 
-#define QUEUE_CAPACITY 256
+#define QUEUE_CAPACITY 1024
 
 typedef struct {
     task_t tasks[QUEUE_CAPACITY];
@@ -26,7 +26,7 @@ typedef struct {
 } queue_t;
 
 void queue_init(queue_t* queue);
-void queue_push(queue_t* queue, task_t task);
+int queue_push(queue_t* queue, task_t task);
 task_t queue_pop(queue_t* queue);
 
 #endif

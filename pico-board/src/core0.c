@@ -1,16 +1,18 @@
 // src/core0.c
-#include "core0.h"
+
+#include <stdio.h>
+#include <string.h>
+
 #include "pico/stdlib.h"
-#include "pico/cyw43_arch.h"
+#include "pico/cyw43_arch.h"   // ← for cyw43_arch_poll()
 #include "lwip/tcp.h"
-#include "lwip/pbuf.h"     // for struct pbuf
+#include "lwip/pbuf.h"         // for struct pbuf
 #include "queue.h"
-#include "request.h"       // for HttpRequest and parse_http_request()
+#include "request.h"
 
-#define PORT    80
-#define LED_PIN 18
+#define PORT 80
 
-// — recv callback: enqueue incoming HTTP requests —
+// receive callback: copy, null-terminate, enqueue
 static err_t recv_cb(void *arg, struct tcp_pcb *pcb, struct pbuf *p, err_t err) {
     if (!p) {
         tcp_close(pcb);
@@ -18,47 +20,41 @@ static err_t recv_cb(void *arg, struct tcp_pcb *pcb, struct pbuf *p, err_t err) 
     }
 
     request_t req;
-    memset(&req, 0, sizeof(req));
-    req.pcb = pcb;
-    int copy_len = p->len < REQUEST_BUFFER_SIZE ? p->len : REQUEST_BUFFER_SIZE;
+    size_t copy_len = p->len < REQUEST_BUFFER_SIZE - 1
+                          ? p->len
+                          : REQUEST_BUFFER_SIZE - 1;
     memcpy(req.buffer, p->payload, copy_len);
+    req.buffer[copy_len] = '\0';      // NUL-terminate!
     req.length = copy_len;
+    req.pcb    = pcb;
 
-    queue_push(&request_queue, &req);
+    if (!queue_push(&request_queue, &req)) {
+        printf("[core0] queue full—dropping\n");
+        tcp_close(pcb);
+    } else {
+        printf("[core0] enqueued: %.*s\n", (int)copy_len, req.buffer);
+    }
 
     pbuf_free(p);
     return ERR_OK;
 }
 
-// — accept callback: install recv_cb on a newly accepted PCB —
+// accept callback: install our recv_cb
 static err_t accept_cb(void *arg, struct tcp_pcb *newpcb, err_t err) {
     tcp_recv(newpcb, recv_cb);
     return ERR_OK;
 }
 
-// — this is your core0 “main” loop —
-void core0_main() {
-    // LED setup for visual feedback (optional)
-    gpio_init(LED_PIN);
-    gpio_set_dir(LED_PIN, GPIO_OUT);
-    gpio_put(LED_PIN, 0);
-
-    // Create the listening PCB
+// core0_main: listen, accept, poll Wi-Fi
+void core0_main(void) {
     struct tcp_pcb *listener = tcp_new();
-    if (!listener) {
-        printf("Failed to create PCB\n");
-        return;
-    }
-    if (tcp_bind(listener, IP_ADDR_ANY, PORT) != ERR_OK) {
-        printf("Failed to bind to port %d\n", PORT);
-        return;
-    }
+    tcp_bind(listener, IP_ADDR_ANY, PORT);
     listener = tcp_listen(listener);
     tcp_accept(listener, accept_cb);
 
-    // Poll Wi-Fi & keep core alive
     while (true) {
-        cyw43_arch_poll();
+        cyw43_arch_poll();   // drive the Wi-Fi stack
         sleep_ms(10);
     }
 }
+

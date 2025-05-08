@@ -1,18 +1,22 @@
 #include <stdio.h>
 #include <string.h>
-#include "pico/stdlib.h"
-#include "pico/cyw43_arch.h"
-#include "lwip/tcp.h"
-#include "lwip/netif.h"
-#include "lwip/ip_addr.h"
-#include "response.h"
-#include "request.h"
 
-#define PORT          80
-#define MAX_REQ_LEN 1024
+#include "pico/stdlib.h"
+#include "pico/multicore.h"
+#include "pico/cyw43_arch.h"
+
+#include "lwip/netif.h"
+#include "lwip/dhcp.h"
+#include "lwip/ip_addr.h"
+
+#include "queue.h"
+#include "core0.h"
+#include "core1.h"
+
+#define PORT 80
 
 // -----------------------------------------------------------------------------
-// File‐scope state for picking the strongest AP
+// Scan state (unchanged)
 // -----------------------------------------------------------------------------
 static struct {
     uint8_t  bssid[6];
@@ -23,9 +27,9 @@ static struct {
 static int scan_best_cb(void *env, const cyw43_ev_scan_result_t *r) {
     const char *target = (const char*)env;
     if (!r) return 0;
-    if (r->ssid_len == strlen(target)
-        && memcmp(r->ssid, target, r->ssid_len) == 0
-        && r->rssi > best_ap.rssi) {
+    if (r->ssid_len == strlen(target) &&
+        memcmp(r->ssid, target, r->ssid_len) == 0 &&
+        r->rssi > best_ap.rssi) {
         best_ap.rssi    = r->rssi;
         best_ap.channel = r->channel;
         memcpy(best_ap.bssid, r->bssid, 6);
@@ -34,74 +38,24 @@ static int scan_best_cb(void *env, const cyw43_ev_scan_result_t *r) {
 }
 
 // -----------------------------------------------------------------------------
-// Handle incoming data on a connection
-// -----------------------------------------------------------------------------
-static err_t on_recv(void *arg, struct tcp_pcb *pcb,
-                     struct pbuf *p, err_t err) {
-    if (!p) {
-        tcp_close(pcb);
-        return ERR_OK;
-    }
-    tcp_recved(pcb, p->tot_len);
-
-    // Copy into a local buffer and NUL-terminate
-    int len = p->tot_len;
-    if (len > MAX_REQ_LEN - 1) len = MAX_REQ_LEN - 1;
-    char buf[MAX_REQ_LEN];
-    memcpy(buf, p->payload, len);
-    buf[len] = '\0';
-
-    // Parse the request
-    HttpRequest req;
-    memset(&req, 0, sizeof(req));      // zero out all fields
-    parse_http_request(buf, &req);
-
-    // Route and respond
-    if (strcmp(req.method, "GET") != 0) {
-        const char *body = "405 Method Not Allowed";
-        generate_http_response(pcb, 405, body);
-    } else if (strcmp(req.path, "/") == 0) {
-        const char *body = "Hello, Pico W!";
-        generate_http_response(pcb, 200, body);
-    } else {
-        const char *body = "404 Not Found";
-        generate_http_response(pcb, 404, body);
-    }
-
-    pbuf_free(p);
-    tcp_close(pcb);
-    return ERR_OK;
-}
-
-// -----------------------------------------------------------------------------
-// New connection has been accepted
-// -----------------------------------------------------------------------------
-static err_t on_accept(void *arg, struct tcp_pcb *newpcb, err_t err) {
-    tcp_recv(newpcb, on_recv);
-    return ERR_OK;
-}
-
-// -----------------------------------------------------------------------------
 // Application entry point
 // -----------------------------------------------------------------------------
 int main() {
     stdio_init_all();
-    sleep_ms(2000);  // let macOS enumerate the USB-CDC port
-
+    sleep_ms(2000);
     printf("stdio over USB ready\n"); fflush(stdout);
 
-    // 1) Initialize Wi-Fi
+    // 1) Wi-Fi init
     if (cyw43_arch_init()) {
         printf("ERROR: Wi-Fi init failed\n");
         return 1;
     }
     cyw43_arch_enable_sta_mode();
 
-    // 2) Scan for best BSSID of our SSID
-    const char *ssid = "tkwaterstorage";
-    const char *pass = "kimmizukura10";
-
-    printf("Scanning for '%s'…\n", ssid); fflush(stdout);
+    // 2) Scan for your SSID
+    const char *ssid = "wifi_ssid";
+    const char *pass = "wifi_password";
+    printf("Scanning for '%s' …\n", ssid); fflush(stdout);
     cyw43_wifi_scan_options_t opts = {0};
     if (cyw43_wifi_scan(&cyw43_state, &opts, (void*)ssid, scan_best_cb)) {
         printf("ERROR: scan start failed\n");
@@ -115,51 +69,50 @@ int main() {
         printf("ERROR: SSID '%s' not found\n", ssid);
         return 1;
     }
-    printf("Chosen BSSID %02x:%02x:%02x:%02x:%02x:%02x  CH %u  RSSI %d\n",
+    printf("Picked BSSID %02x:%02x:%02x:%02x:%02x:%02x  CH %u  RSSI %d\n",
            best_ap.bssid[0], best_ap.bssid[1], best_ap.bssid[2],
            best_ap.bssid[3], best_ap.bssid[4], best_ap.bssid[5],
            best_ap.channel, best_ap.rssi);
     fflush(stdout);
 
-    // 3) Join that AP
-    printf("Joining…\n"); fflush(stdout);
-    if (cyw43_wifi_join(&cyw43_state,
-                        strlen(ssid), (const uint8_t*)ssid,
-                        strlen(pass), (const uint8_t*)pass,
-                        CYW43_AUTH_WPA2_AES_PSK,
-                        best_ap.bssid,
-                        best_ap.channel)) {
-        printf("ERROR: join API failed\n");
+    // 3) Join with built-in polling (30 s timeout)
+    printf("Connecting to '%s' …\n", ssid); fflush(stdout);
+    int ret = cyw43_arch_wifi_connect_timeout_ms(
+        ssid, pass, CYW43_AUTH_WPA2_AES_PSK, 30 * 1000
+    );
+    if (ret) {
+        printf("ERROR: failed to join (code %d)\n", ret);
         return 1;
     }
+    printf("Wi-Fi link up!\n"); fflush(stdout);
 
-    // 4) Configure a static IP
+    // 4) Start DHCP under the lwIP lock
     struct netif *netif = netif_default;
-    ip4_addr_t ipaddr, netmask, gw;
-    IP4_ADDR(&ipaddr,  192,168,0,42);
-    IP4_ADDR(&netmask, 255,255,255,0);
-    IP4_ADDR(&gw,      192,168,0,1);
-    netif_set_addr(netif, &ipaddr, &netmask, &gw);
-    printf("Static IP: %s  GW: %s\n",
-           ip4addr_ntoa(&netif->ip_addr),
-           ip4addr_ntoa(&netif->gw));
-    fflush(stdout);
+    cyw43_arch_lwip_begin();
+    dhcp_start(netif);
+    cyw43_arch_lwip_end();
 
-    // 5) Start HTTP server
-    struct tcp_pcb *pcb = tcp_new();
-    tcp_bind(pcb, IP_ADDR_ANY, PORT);
-    pcb = tcp_listen(pcb);
-    tcp_accept(pcb, on_accept);
-
-    printf("HTTP server running on port %d\n", PORT);
-    fflush(stdout);
-
-    // 6) Poll & heartbeat
-    while (1) {
+    // 5) Wait for a non-zero IP
+    printf("Waiting for DHCP lease…\n"); fflush(stdout);
+    for (int i = 0; i < 200; ++i) {
         cyw43_arch_poll();
-        sleep_ms(1000);
-        printf("."); fflush(stdout);
+        cyw43_arch_lwip_begin();
+        ip4_addr_t addr = netif->ip_addr;
+        cyw43_arch_lwip_end();
+        if (!ip4_addr_isany_val(addr)) break;
+        sleep_ms(50);
     }
+
+    // 6) Print the assigned IP
+    ip4_addr_t final_ip = netif->ip_addr;
+    printf("Got IP address: %s\n", ip4addr_ntoa(&final_ip));
+    fflush(stdout);
+
+    // 7) Kick off your two-core HTTP server
+    queue_init(&request_queue);
+    multicore_launch_core1(core1_main);
+    printf("Launched core1_main()\n"); fflush(stdout);
+    core0_main();  // never returns
 
     return 0;
 }

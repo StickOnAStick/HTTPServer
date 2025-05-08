@@ -22,13 +22,13 @@ void handle_http_request(struct tcp_pcb *pcb, char *buf, size_t len) {
     const char *body;
     if (strcmp(req.method,"GET")!=0) {
         status = 405;
-        body = "<h1>405 Method Not Allowed</h1>";
+        body = "405 Method Not Allowed";
     } else if (strcmp(req.path,"/")==0) {
         status = 200;
-        body = "<h1>Hello, Pico W!</h1>";
+        body = "Hello, Pico W!";
     } else {
         status = 404;
-        body = "<h1>404 Not Found</h1>";
+        body = "404 Not Found";
     }
 
     generate_http_response(pcb, status, body);

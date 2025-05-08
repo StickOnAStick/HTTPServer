@@ -26,23 +26,38 @@ static const char *reason_phrase(int code) {
     }
 }
 
-void generate_http_response(struct tcp_pcb *pcb, int status_code, const char *body) {
-    const char *reason = reason_phrase(status_code);
-    size_t body_len = body ? strlen(body) : 0;
+#include "pico/cyw43_arch.h"   // for cyw43_arch_lwip_begin/end
+#include "lwip/tcp.h"
+#include <string.h>
+#include <stdio.h>
 
-    // Build and send the status line + headers
+// new signature with status code:
+void generate_http_response(struct tcp_pcb *pcb, int status, const char *body) {
     char hdr[256];
     int hlen = snprintf(hdr, sizeof(hdr),
         "HTTP/1.1 %d %s\r\n"
         "Content-Type: text/html\r\n"
-        "Content-Length: %zu\r\n"
+        "Content-Length: %d\r\n"
         "\r\n",
-        status_code, reason, body_len);
+        status,
+        (status == 200 ? "OK" :
+         status == 404 ? "Not Found" :
+         status == 405 ? "Method Not Allowed" : ""),
+        (int)strlen(body));
 
-    tcp_write(pcb, hdr,   hlen,       TCP_WRITE_FLAG_COPY);
+    // 1) write under lwIP lock
+    cyw43_arch_lwip_begin();
+    tcp_write(pcb, hdr,  hlen,         TCP_WRITE_FLAG_COPY);
+    tcp_write(pcb, body, strlen(body), TCP_WRITE_FLAG_COPY);
+    tcp_output(pcb);  // <- force lwIP to send now
+    cyw43_arch_lwip_end();
 
-    // Send the body (if any)
-    if (body_len) {
-        tcp_write(pcb, body, body_len, TCP_WRITE_FLAG_COPY);
-    }
+    // 2) give it a moment on the air
+    sleep_ms(50);
+
+    // 3) close under lwIP lock
+    cyw43_arch_lwip_begin();
+    tcp_close(pcb);
+    cyw43_arch_lwip_end();
 }
+

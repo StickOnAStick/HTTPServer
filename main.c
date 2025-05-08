@@ -6,6 +6,8 @@
 #include <arpa/inet.h>
 #include <sys/types.h>  // Required for macOS
 #include <netinet/in.h> // Required for macOS
+#include <sys/time.h>
+#include <errno.h>
 
 
 #include "inc/request.h"
@@ -15,8 +17,9 @@
 
 #define PORT 8080
 #define BUFFER_SIZE 1024 // 1kb buff
-#define MAX_CONNECTIONS 100
-#define NUM_THREADS 20
+#define MAX_CONNECTIONS SOMAXCONN
+#define NUM_THREADS 12
+#define SOCKET_TIMEOUT_SECS 1
 
 pthread_t threads[NUM_THREADS];
 queue_t TaskQueue;
@@ -26,6 +29,18 @@ void handle_client(void* arg){
     free(arg); // Free right away.
     char buffer[BUFFER_SIZE];
     int bytes_recieved = read(client_socket, buffer, sizeof(buffer) - 1); // leave room for delimeter
+
+    if(bytes_recieved <= 0){
+        if(bytes_recieved == 0){
+            fprintf(stderr, "Client disconnected (fd: %d)\n", client_socket);
+        } else if (errno == EAGAIN || errno == EWOULDBLOCK){
+            fprintf(stderr, "Read timeout on socket %d\n", client_socket);
+        }else {
+            perror("Read failed");
+        }
+        close(client_socket);
+        return;
+    }
 
     if (bytes_recieved < 8){
         perror("Read Error: Data too small for parsing");
@@ -109,6 +124,11 @@ int main(){
             perror("Accept failed.");
             continue; // Brilliant error handling
         }
+
+        // Set socket timeouts for read/write
+        struct timeval timeout = { .tv_sec = SOCKET_TIMEOUT_SECS, .tv_usec=0};
+        setsockopt(client_socket, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+        setsockopt(client_socket, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
 
         int* socket_pointer = malloc(sizeof(int));
         if(!socket_pointer){

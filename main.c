@@ -8,6 +8,8 @@
 #include <netinet/in.h> // Required for macOS
 #include <sys/time.h>
 #include <errno.h>
+#include <fcntl.h>
+#include <netinet/tcp.h>
 
 
 #include "inc/request.h"
@@ -24,11 +26,12 @@
 pthread_t threads[NUM_THREADS];
 queue_t TaskQueue;
 
+__thread char thread_buffer[BUFFER_SIZE];
+
 void handle_client(void* arg){
     int client_socket = *(int*)arg;
     free(arg); // Free right away.
-    char buffer[BUFFER_SIZE];
-    int bytes_recieved = read(client_socket, buffer, sizeof(buffer) - 1); // leave room for delimeter
+    int bytes_recieved = recv(client_socket, thread_buffer, sizeof(thread_buffer) - 1, 0); // leave room for delimeter
 
     if(bytes_recieved <= 0){
         if(bytes_recieved == 0){
@@ -48,11 +51,11 @@ void handle_client(void* arg){
         return;
     }
 
-    buffer[bytes_recieved] = '\0';
+    thread_buffer[bytes_recieved] = '\0';
     HttpRequest req;
-    parse_http_request(buffer, &req);
+    parse_http_request(thread_buffer, &req);
 
-    printf("Recieved request: %s %s %s\n", req.method, req.path, req.version);
+    //printf("Recieved request: %s %s %s\n", req.method, req.path, req.version);
 
     generate_http_response(client_socket, req.path);
     
@@ -126,9 +129,11 @@ int main(){
         }
 
         // Set socket timeouts for read/write
+        int flag = 1;
         struct timeval timeout = { .tv_sec = SOCKET_TIMEOUT_SECS, .tv_usec=0};
         setsockopt(client_socket, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
         setsockopt(client_socket, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
+        setsockopt(client_socket, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(flag));
 
         int* socket_pointer = malloc(sizeof(int));
         if(!socket_pointer){
@@ -143,15 +148,17 @@ int main(){
         if(queue_push(&TaskQueue, task)){
             const char* body = "503 Service Unavailable\n";
             //printf("Reuqest dropped: %d", *socket_pointer);
-            dprintf(client_socket,
-                "HTTP/1.1 503 Service Unavailable\r\n"
-                "Content-Type: text/plain\r\n"
-                "Content-Length: %zu\r\n"
-                "Connection: close\r\n"
-                "\r\n"
-                "%s",
-                strlen(body), body
+            char response[BUFFER_SIZE];
+            int response_len = snprintf(response, sizeof(response), 
+            "HTTP/1.1 503 Service Unavailable\r\n"
+            "Content-Type: text/plain\r\n"
+            "Content-Length: %zu\r\n"
+            "Connection: close\r\n"
+            "\r\n"
+            "%s",
+            strlen(body), body
             );
+            send(client_socket, response, response_len, 0);
             close(client_socket);
             free(socket_pointer); // Prevent memory leak
         }
